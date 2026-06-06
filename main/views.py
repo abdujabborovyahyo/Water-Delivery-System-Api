@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, generics, filters
 from rest_framework.generics import get_object_or_404
 from rest_framework.views import APIView
@@ -18,14 +19,24 @@ from .serializers import (
 # 1. WATER APIVIEWS (Suv uchun CRUD)
 # =====================================================================
 class WaterListCreateAPIView(APIView):
-    """Suvlar ro'yxatini olish (GET) va yangi suv qo'shish (POST)"""
     permission_classes = [IsAuthenticated]
 
+    # 1. GET so'rovini Swaggerda chiroyli ko'rsatish
+    @swagger_auto_schema(
+        operation_description="Barcha ombordagi suv brendlari ro'yxatini olish.",
+        responses={200: WaterSerializer(many=True)}
+    )
     def get(self, request):
         water = Water.objects.all()
         serializer = WaterSerializer(water, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    # 2. POST so'rovida qanday ma'lumot kiritish kerakligini Swaggerga o'rgatish
+    @swagger_auto_schema(
+        operation_description="Yangi suv brendi qo'shish (Faqat adminlar uchun).",
+        request_body=WaterSerializer, # Swagger shu serializerga qarab forma ochadi
+        responses={201: WaterSerializer(), 400: "Xato ma'lumot kiritildi"}
+    )
     def post(self, request):
         serializer = WaterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
