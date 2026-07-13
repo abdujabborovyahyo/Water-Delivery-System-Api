@@ -83,14 +83,14 @@ class Order(models.Model):
         verbose_name = "Buyurtma"
         verbose_name_plural = "Buyurtmalar"
 
-    def save(self, *file, **kwargs):
+    def save(self, *args, **kwargs):
         """
         Professional mantiq: Buyurtma saqlanishidan oldin, umumiy narxni
         suvning joriy narxini miqdoriga ko'paytirib, avtomatik hisoblaydi.
         """
         if not self.total_price:
             self.total_price = self.water.price * self.quantity
-        super().save(*file, **kwargs)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Buyurtma #{self.id} | {self.customer.name} | {self.total_price} UZS"
