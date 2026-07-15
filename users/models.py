@@ -9,6 +9,11 @@ class User(AbstractUser):
     Kelajakda rasm, lavozim kabi qo'shimcha maydonlar qo'shish mumkin.
     """
     phone_number = models.CharField(max_length=20, blank=True, null=True, unique=True)
+    birth_date = models.DateField(
+        blank=True,
+        null=True,
+        help_text="Admin tug'ilgan sana (kamida 19 yosh bo'lishi shart)."
+    )
 
     class Meta:
         verbose_name = "Admin"

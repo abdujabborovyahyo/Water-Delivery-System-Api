@@ -13,7 +13,7 @@ class WaterSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def validate_liters(self, value):
-        if value.liters > 19:
+        if value > 19:
             raise serializers.ValidationError("Bunday katta litrlarda suv sotilmaydi")
         return value
 

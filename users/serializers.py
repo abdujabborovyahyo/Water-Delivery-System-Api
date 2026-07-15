@@ -13,13 +13,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone_number']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone_number', 'birth_date']
         read_only_fields = ['id']
 
     def validate_birth_date(self, value):
         """
         Admin yoshini kunma-kun aniqlikda tekshirish (Kamida 19 yosh bo'lishi shart)
         """
+        # birth_date ixtiyoriy maydon: qiymat berilmasa tekshiruvni o'tkazib yuboramiz
+        if value is None:
+            return value
+
         today = timezone.now().date()
 
         # Yoshni aniq hisoblash formulasi (oy va kunni inobatga olgan holda)
