@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from rest_framework.pagination import PageNumberPagination
 
+from core.permissions import IsAdmin, IsAdminOrReadOnly
 from .models import Water, Customer, Order
 from .serializers import (
     WaterSerializer, CustomerSerializer,
@@ -19,7 +20,7 @@ from .serializers import (
 # 1. WATER APIVIEWS (Suv uchun CRUD)
 # =====================================================================
 class WaterListCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     # 1. GET so'rovini Swaggerda chiroyli ko'rsatish
     @swagger_auto_schema(
@@ -46,7 +47,7 @@ class WaterListCreateAPIView(APIView):
 
 class WaterDetailAPIView(APIView):
     """Bitta suvni ko'rish (GET), yangilash (PUT/PATCH) va o'chirish (DELETE)"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get(self, request, pk):
         water = get_object_or_404(Water, pk=pk)
@@ -81,7 +82,7 @@ class WaterDetailAPIView(APIView):
 # =====================================================================
 class CustomerListCreateAPIView(APIView):
     """Mijozlar ro'yxati (GET) va yangi mijoz qo'shish (POST)"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get(self, request):
         customers = Customer.objects.all()
@@ -97,7 +98,7 @@ class CustomerListCreateAPIView(APIView):
 
 class CustomerDetailAPIView(APIView):
     """Mijozni ko'rish (GET), yangilash (PUT/PATCH) va o'chirish (DELETE)"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get(self, request, pk):
         customer = get_object_or_404(Customer, pk=pk)
@@ -128,18 +129,19 @@ class CustomerDetailAPIView(APIView):
 
 
 # =====================================================================
-# 3. ORDER GENERICS (Buyurtma uchun faqat List va Post)
+# 3. ORDER GENERICS (Buyurtma uchun List, Create, Retrieve, Update, Delete)
 # =====================================================================
 class OrderListCreateGenericView(generics.ListCreateAPIView):
     """
-    Shartga ko'ra faqat list va post amallari uchun.
-    Generics yordamida juda qisqa va mukammal yoziladi.
+    Barcha buyurtmalarni ko'rish va yangi buyurtma yaratish.
+    Faqat tizimga kirgan adminlar buyurtma yarata oladi.
     """
-    permission_classes = [IsAuthenticated]
-    queryset = Order.objects.all()
+    permission_classes = [IsAuthenticated, IsAdmin]
+    queryset = Order.objects.all().select_related('customer', 'water', 'driver', 'admin')
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    ordering_fields = ['-created_at']
-    filterset_fields = ['customer', 'water']
+    ordering_fields = ['-created_at', 'status']
+    filterset_fields = ['customer', 'water', 'status', 'driver']
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         """Swagger va DRF POST paytida Write, GET paytida Read serializerini ko'rishi uchun"""
@@ -151,8 +153,77 @@ class OrderListCreateGenericView(generics.ListCreateAPIView):
         """Buyurtmani qabul qilgan admin sifatida tizimga kirgan user avtomat birikadi"""
         serializer.save(admin=self.request.user)
 
+    @swagger_auto_schema(
+        operation_description="Barcha buyurtmalar ro'yxatini olish. Filter qilinishi mumkin: customer, water, status, driver. Saralash: -created_at, status",
+        responses={200: OrderReadSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Yangi buyurtma yaratish. Faqat admin huquqi borlarga ruxsat beriladi.",
+        request_body=OrderWriteSerializer,
+        responses={201: OrderReadSerializer(), 400: "Xato ma'lumot"}
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class OrderDetailGenericView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Bitta buyurtmani ko'rish, yangilash va o'chirish.
+    Faqat admin huquqi borlarga ruxsat beriladi.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+    queryset = Order.objects.all().select_related('customer', 'water', 'driver', 'admin')
+
+    def get_serializer_class(self):
+        """GET uchun Read serializer, PUT/PATCH uchun Write serializer"""
+        if self.request.method in ['PUT', 'PATCH']:
+            return OrderWriteSerializer
+        return OrderReadSerializer
+
+    @swagger_auto_schema(
+        operation_description="Buyurtma detaillarini ID orqali olish.",
+        responses={200: OrderReadSerializer()}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Buyurtmani to'liq yangilash (PUT). Status va haydovchini o'zgartirish mumkin.",
+        request_body=OrderWriteSerializer,
+        responses={200: OrderReadSerializer(), 400: "Xato ma'lumot"}
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Buyurtmani qisman yangilash (PATCH). Faqat kerakli maydonlarni o'zgartirib yuborish mumkin.",
+        request_body=OrderWriteSerializer,
+        responses={200: OrderReadSerializer(), 400: "Xato ma'lumot"}
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Buyurtmani o'chirish (Faqat PENDING holatidagi buyurtmalarni o'chirish mumkin).",
+        responses={204: "O'chirildi", 400: "O'chira olmadi"}
+    )
+    def delete(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status != 'PENDING':
+            return Response(
+                {
+                    "error": "Faqat PENDING holatidagi buyurtmalarni o'chirish mumkin.",
+                    "current_status": order.status
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().delete(request, *args, **kwargs)
+
 
 class CustomPagination(PageNumberPagination):
-    page_size = 5
+    page_size = 10
     page_size_query_param = 'page_size'
     max_page_size = 100
